@@ -7,9 +7,37 @@ class NetworkCcanner {
     List<String> lst = [];
     for (var interface in await NetworkInterface.list()) {
       for (var add in interface.addresses) {
-        lst.add(add.address.toString());
+        bool isGood = true;
+        int dot_times = 0;
+        String parsed = add.address;
+        for (int i = 0; i < 4; i++) {
+          if (dot_times < 3) {
+            //if dot supposed to exist
+            if (parsed.contains(".")) {
+              dot_times++;
+              String supposeToBeInt = parsed.substring(0, parsed.indexOf("."));
+              if (int.tryParse(supposeToBeInt) != null) {
+                parsed =
+                    parsed.substring(parsed.indexOf(".") + 1, parsed.length);
+              } else {
+                isGood = false;
+              }
+            } else {
+              isGood = false;
+            }
+          } else {
+            if (int.tryParse(parsed) != null) {
+              parsed = parsed.substring(parsed.indexOf(".") + 1, parsed.length);
+            } else {
+              isGood = false;
+            }
+          }
+        }
+        if (isGood) lst.add(add.address.toString());
       }
     }
+    print("lst:");
+    lst.map((e) => print(e));
     return lst;
   }
 
@@ -18,6 +46,8 @@ class NetworkCcanner {
   Future<List<String>> getAllNetworkAddresses(List<String> list) async {
     List<String> lst = [];
     for (var add in list) {
+      print("object");
+      print(add);
       String host = "${add.substring(0, add.lastIndexOf("."))}.";
       for (int i = 0; i < 256; i++) {
         lst.add("$host$i");
@@ -28,16 +58,21 @@ class NetworkCcanner {
 
 //trys to connect to a socket and returns a Future<bool> with true if succesed and false for not
 //closes connection immediatly
-  Future<bool> tryConnectToSocketAsync(String ip, int port) async {
-    bool res = true;
+  Future<IpData?> tryConnectToSocketAsync(String ip, int port) async {
+    IpData? res;
+    Socket? socket;
     try {
-      Socket socket =
+      socket =
           await Socket.connect(ip, port, timeout: const Duration(seconds: 5));
-      socket.close();
+      res = IpData();
+      res.ip = ip;
+
       print("success ${ip}:${port}");
-    } catch (e) {
-      res = false;
-      return res;
+    } on Exception catch (e) {
+      if (socket != null) {
+        socket.close();
+        socket.destroy();
+      }
     }
     //print("$res + $ip");
     return res;
@@ -45,20 +80,20 @@ class NetworkCcanner {
 
   //gets socket details and a List<String>, if connected successfuly then adds the ip to the list
   Future<void> addStringConnectedAsync(
-      String ip, int port, List<String> lst) async {
+      String ip, int port, List<IpData> lst) async {
     var res = await tryConnectToSocketAsync(ip, port);
-    if (res) {
-      lst.add(ip);
+    if (res != null) {
+      lst.add(res);
     }
     return;
   }
 
 //scans the network for all ip addresses that have a specific port open, returns a list<String> of them
-  Future<List<String>> scanNetworkForPort(int port) async {
+  Future<List<IpData>> scanNetworkForPort(int port) async {
     List<String> addresses =
         await getAllNetworkAddresses(await getNetworkInterfaces());
     List<Future<void>> futures = [];
-    List<String> resAddresses = [];
+    List<IpData> resAddresses = [];
     for (var element in addresses) {
       futures.add(addStringConnectedAsync(element, port, resAddresses));
     }
@@ -82,38 +117,46 @@ class NetworkCcanner {
 
   Future<void> addSocketToListOnConnected(IpData data, int port) async {
     await tryConnectToSocketAsync(data.ip, port)
-        .then((value) async => {if (value) data.openPorts.add(port)});
+        .then((value) async => {if (value != null) data.openPorts.add(port)});
   }
 
 //scanning network with port filter
   Future<List<String>> ScanNetworkWithPortFilterAsync(List<int> ports) async {
     if (ports.isEmpty) return ["empty filter!"];
-    List<String> result = [];
+    List<String> results = [];
     List<Future<void>> futures = [];
     List<String> addresses =
         await getAllNetworkAddresses(await getNetworkInterfaces());
     for (var address in addresses) {
-      futures.add(ScanPortsForIpAsync(address, ports, result));
+      //run a port scan for each address
+      futures.add(ScanPortsForIpAsync(address, ports, results));
     }
     await Future.wait(futures);
-    return result;
+    return results;
   }
 
   Future<void> ScanPortsForIpAsync(
       String ip, List<int> portsFilter, List<String> IpCollection) async {
-    List<Future<bool>> futures = [];
+    List<Future<IpData?>> futures = [];
     List<bool> results = [];
     for (var element in portsFilter) {
+      //try all ports
       futures.add(tryConnectToSocketAsync(ip, element));
     }
     for (var e in futures) {
-      e.then((value) => results.add(value));
+      //wait for results
+      e.then((value) {
+        results
+            .add((e != null)); //add true if recieved object and false for none
+      });
     }
     await Future.wait(futures);
     if (!results.contains(false)) IpCollection.add(ip);
   }
 
   Future<void> addPortConnectedAsync(String ip, int port, List<int> lst) async {
-    if (await tryConnectToSocketAsync(ip, port)) lst.add(port);
+    await tryConnectToSocketAsync(ip, port).then((value) {
+      if (value != null) lst.add(port);
+    });
   }
 }

@@ -56,18 +56,34 @@ class _HomePageState extends State<HomePage> {
                     child: TextField(
                       controller: myController,
                       onChanged: (val) {
-                        int intVal;
+                        print("called");
+                        int intVal = 0;
                         try {
-                          intVal = int.parse(val);
+                          setState(() {
+                            intVal = int.parse(val);
+                            portToScan = intVal;
+                            myController.text = intVal.toString();
+                          });
                         } catch (e) {
-                          intVal = 0;
-                          myController.text = intVal.toString();
+                          setState(() {
+                            intVal = 0;
+                            portToScan = intVal;
+                            myController.text = intVal.toString();
+                          });
                         }
                         if (intVal > 65536) {
-                          myController.text = 65536.toString();
+                          setState(() {
+                            intVal = 65536;
+                            portToScan = intVal;
+                            myController.text = intVal.toString();
+                          });
                         }
                         if (intVal < 0) {
-                          myController.text = 0.toString();
+                          setState(() {
+                            intVal = 0;
+                            portToScan = intVal;
+                            myController.text = intVal.toString();
+                          });
                         }
                       },
                     ),
@@ -118,7 +134,10 @@ class _HomePageState extends State<HomePage> {
                               .scanNetworkForPort(int.parse(myController.text));
 
                           setState(() {
-                            leftListView = x;
+                            leftListView = x.map((e) {
+                             // print("name: ${e.hostName}: ${e.ip}:");
+                              return "${e.ip}: \'${e.hostName}\'";
+                            }).toList();
                           });
                         },
                         child: Row(
@@ -136,11 +155,12 @@ class _HomePageState extends State<HomePage> {
                           print("pressed");
                           setState(() {
                             rightListView = ["scanning"];
-                            portFilter = portFilter.toSet().toList();
+                            portFilter =
+                                portFilter.toSet().toList(); //kill duplicates
                           });
                           List<int> portFilterInt =
                               portFilter.map((e) => int.parse(e)).toList();
-                          print("bbbb:$portFilterInt");
+
                           var scanner = NetworkCcanner();
                           var x = await scanner.ScanNetworkWithPortFilterAsync(
                               portFilterInt);
